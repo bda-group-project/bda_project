@@ -1,0 +1,8 @@
+
+1. A data set for graudate admission. 
+ https://www.kaggle.com/mohansacharya/graduate-admissions
+we can use the idea of H1-B paper to do a similar analysis. 
+
+However, It may be too easier. 
+
+
