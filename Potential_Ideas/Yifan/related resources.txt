@@ -1,0 +1,8 @@
+#data from Kaggle Pokemon battle prediction
+https://www.kaggle.com/terminus7/pokemon-challenge
+
+#detailed model examples
+https://www.davidkane.info/files/classical-and-bayesian-logistic-regression
+#data analysis
+https://www.kaggle.com/jonathanbouchet/pokemon-battles#data-preparation
+
