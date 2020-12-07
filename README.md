@@ -21,6 +21,16 @@ All dataset above are not appropriate for the project as we discussed. The next 
 We would meet at 2pm Nov 7 for the final decesion. 
 
 
-Next Meeting: 
 
-2pm Nov 7 
+Dec 6: 
+
+Lucy: Start with Backgroud Intro + Data , and try classical methods 
+
+Sen Yang: re-try probit/t(8) models + models description
+
+Yifan : re-try models 
+
+
+Next Meeting: 
+4:00 pm on Dec 9th
+
