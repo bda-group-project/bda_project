@@ -1,12 +1,11 @@
 combats <- read.csv("/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/data/combats.csv", header=T)
-pokemon <- read.csv("/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/data/pokemon.csv", header=T)
+pokemon <- read.csv("/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/data/pokemon.csv", header=T, na.strings="")
 colnames(pokemon)<-c("id","Name","Type.1","Type.2","HP","Attack","Defense","Sp.Atk","Sp.Def","Speed","Generation","Legendary")
 tests <- read.csv("/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/data/tests.csv", header=T)
 
 ## Check speed vs. winner
-get.attr <- function(pokemon_id, attribute) {
+get.speed <- function(pokemon_id) {
   idx <- which(pokemon$id == pokemon_id)
-  attr_idx <- 
   return(pokemon$Speed[idx])
 }
 
@@ -25,30 +24,57 @@ dim(combats);dim(pokemon)
 combats_pok1 <- merge(x=combats, y=pokemon, by.x="First_pokemon", by.y="id", all.x=T)
 combats_pok1pok2 <- merge(x=combats_pok1, y=pokemon, by.x="Second_pokemon", by.y="id", all.x=T)
 combats_pok1pok2 <- combats_pok1pok2[,-(4:5)] # Delete First_speed, Second_speed
+
+## Type chart
+type_chart <- read.csv("/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/pokemon-chart/chart.csv", header=T, row.names=1)
+type_factor <- function(att1, att2, def1, def2) {
+  att.v <- c(att1, att2)
+  def.v <- c(def1, def2)
+  temp_mat <- matrix(0,2,2)
+  for (i in 1:2) {
+    for (j in 1:2) {
+      row.idx <- match(att.v[i], rownames(type_chart))
+      col.idx <- match(def.v[j], colnames(type_chart))
+      temp_mat[i, j] <- ifelse(is.na(row.idx)|is.na(col.idx), NA, type_chart[row.idx, col.idx])
+    }
+  }
+  att.def.factors <- apply(temp_mat, 1, function(x) ifelse(is.na(x[1])&is.na(x[2]), NA, prod(x, na.rm=T)))
+  return(max(att.def.factors, na.rm=T))
+}
+
+colidx_1vs2 <- match(c("Type.1.x", "Type.2.x", "Type.1.y", "Type.2.y"), colnames(combats_pok1pok2))
+colidx_2vs1 <- match(c("Type.1.y", "Type.2.y", "Type.1.x", "Type.2.x"), colnames(combats_pok1pok2))
+combats_pok1pok2$type.factor.x <- apply(combats_pok1pok2[, colidx_1vs2], 1, function(vec) type_factor(vec[1],vec[2],vec[3],vec[4]))
+combats_pok1pok2$type.factor.y <- apply(combats_pok1pok2[, colidx_2vs1], 1, function(vec) type_factor(vec[1],vec[2],vec[3],vec[4]))
+
+#
 combats_pok1pok2 <- combats_pok1pok2[,-c(4:6, 15:17)] # Delete Name, Type1, Type2 for x, y 
 combats_pok1pok2$Legendary.x <- ifelse(combats_pok1pok2$Legendary.x == "True", 1, 0)
 combats_pok1pok2$Legendary.y <- ifelse(combats_pok1pok2$Legendary.y == "True", 1, 0)
 combats_pok1pok2 <- combats_pok1pok2[,-c(which(colnames(combats_pok1pok2) %in% c('Generation.x', 'Generation.y')))]
 dim(combats_pok1pok2)
 # Take difference
-diff <- combats_pok1pok2[,4:10] - combats_pok1pok2[,11:17]
+diff <- combats_pok1pok2[,c(4:10,18)] - combats_pok1pok2[,c(11:17,19)]
 combats_diff <- cbind(combats_pok1pok2[,1:3], diff)
 colnames(combats_diff) <- c("Second_pokemon", "First_pokemon", "Winner", "HP.diff", "Attack.diff", 
-                            "Defense.diff", "Sp.Atk.diff", "Sp.Def.diff", "Speed.diff", "Legendary.diff")
+                            "Defense.diff", "Sp.Atk.diff", "Sp.Def.diff", "Speed.diff", "Legendary.diff", "Type.Factor.diff")
 combats_diff$y <- ifelse(combats_diff$Winner == combats_diff$First_pokemon, 1, 0)
+combats_diff$intercept <- rep(1, dim(combats_diff)[1])
 cor(combats_diff$y, combats_diff$Speed.diff, method='spearman')
 
 ##############################################
 set.seed(123)
-train_idx <- sample(dim(combats_diff)[1], dim(combats_diff)[1]/10)
-combats_diff <- combats_diff[train_idx,]
-save(train_idx, file="/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/train_idx.Rdata")
+train_idx <- sample(dim(combats_diff)[1], dim(combats_diff)[1]/50) #1000 samples for training
+test_idx <- sample(setdiff(1:dim(combats_diff)[1], train_idx), dim(combats_diff)[1]/100) #500 samples for testing
+combats_diff_train <- combats_diff[train_idx,]
+combats_diff_test <- combats_diff[test_idx,]
+write.csv(combats_diff_train, "/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/combats_diff_train.csv")
+write.csv(combats_diff_train, "/Users/pl/Documents/SMU/2020 Fall/STAT 6390 - Bayesian Methods and Data Analysis/Project/combats_diff_test.csv")
 
 ##############################################
 ## probit model
 library(msm)
 library(MASS)
-combats_diff$intercept <- rep(1, dim(combats_diff)[1])
 
 sample.onezi <- function(xi, yi, beta) {
   mu <- crossprod(as.numeric(xi), as.numeric(beta))
@@ -75,27 +101,40 @@ gibbs <- function(NN, zi.init, beta.init) {
   beta <- beta.init
   mat[1, ] <- c(beta.init, zi.init)
   for (i in 2:(NN)) {
-    z.mat <- as.matrix(apply(combats_diff, 1, function(data) sample.onezi(data[c(12, 4:10)], data[11], beta)))
-    beta <- sample.beta(x.mat=as.matrix(combats_diff[,c(12, 4:10)]), z.mat=z.mat)
+    z.mat <- as.matrix(apply(combats_diff_train, 1, function(data) sample.onezi(data[c(13, 4:11)], data[12], beta)))
+    beta <- sample.beta(x.mat=as.matrix(combats_diff_train[,c(13, 4:11)]), z.mat=z.mat)
     mat[i,] <- c(beta, z.mat)
     #print(i)
   }
-  return(mat)
+  return(mat[,1:9])
 }
 
 set.seed(1234)
-logistic_reg <- glm(y ~ HP.diff+Attack.diff+Defense.diff+Sp.Atk.diff+Sp.Def.diff+Speed.diff+Legendary.diff, 
-                 family=binomial(link = "probit"), data=combats_diff)
-mle <- summary(logistic_reg)$coeff
-zi.init <- as.matrix(apply(combats_diff, 1, function(data) sample.onezi(data[c(12, 4:10)], data[11], mle[,1])))
+glm_reg <- glm(y ~ HP.diff+Attack.diff+Defense.diff+Sp.Atk.diff+Sp.Def.diff+Speed.diff+Legendary.diff+Type.Factor.diff, 
+                 family=binomial(link = "probit"), data=combats_diff_train)
+summary(glm_reg)
+mle <- summary(glm_reg)$coeff
+zi.init <- as.matrix(apply(combats_diff_train, 1, function(data) sample.onezi(data[c(13, 4:11)], data[12], rep(0,9))))
+
+beta.init.list <- list(mle[,1],
+                       c(-1,-1,-1,0,0,0,1,1,1),
+                       c(0,0,0,1,1,1,-1,-1,-1),
+                       c(1,1,1,-1,-1,-1,0,0,0),
+                       rep(0,9),
+                       rep(1,9),
+                       rep(-1,9))
+result1 <- vector("list", length = length(beta.init.list))
 
 t1 <- Sys.time()
-result1 <- gibbs(NN=5000, zi.init, mle[,1])
-beta_sample1 <- result1[,1:8]
+
+for (i in 1:length(beta.init.list)) {
+  beta.init <- beta.init.list[[i]]
+  zi.init <- as.matrix(apply(combats_diff_train, 1, function(data) sample.onezi(data[c(13, 4:11)], data[12], beta.init)))
+  result1[[i]] <- gibbs(NN=5000, zi.init, beta.init)
+}
+
 t2 <- Sys.time()
 t2 - t1
-
-
 
 
 ##############################################
@@ -154,9 +193,9 @@ gibbs <- function(NN, zi.init, beta.init, lambda.init, nu.init, pi.nu=1, nu_know
   nu <- nu.init
   mat[1, ] <- c(beta.init, nu.init)
   for (i in 2:(NN)) {
-    z.mat <- as.matrix(apply(cbind(combats_diff,lambda), 1, function(data) sample.onezi.t(data[c(12, 4:10)], data[11], beta, data[13])))
-    beta <- sample.beta.t(x.mat=as.matrix(combats_diff[,c(12, 4:10)]), z.mat=z.mat, lambda_vec=lambda)
-    lambda <- as.matrix(apply(cbind(combats_diff,z.mat), 1, function(data) sample.onelambda.t(data[c(12, 4:10)], data[13], beta, nu)))
+    z.mat <- as.matrix(apply(cbind(combats_diff_train,lambda), 1, function(data) sample.onezi.t(data[c(13, 4:11)], data[12], beta, data[14])))
+    beta <- sample.beta.t(x.mat=as.matrix(combats_diff_train[,c(13, 4:11)]), z.mat=z.mat, lambda_vec=lambda)
+    lambda <- as.matrix(apply(cbind(combats_diff_train,z.mat), 1, function(data) sample.onelambda.t(data[c(13, 4:11)], data[14], beta, nu)))
     nu <- sample.nu.t(nu, lambda, pi_nu, sigma=2.4, nu.known=nu_known)
     mat[i,] <- c(beta, nu)
     #print(i)
@@ -164,12 +203,20 @@ gibbs <- function(NN, zi.init, beta.init, lambda.init, nu.init, pi.nu=1, nu_know
   return(mat)
 }
 
-lambda.init.t <- rgamma(dim(combats_diff)[1], shape=4, scale=1/4)
-zi.init.t <- as.matrix(apply(cbind(combats_diff,lambda.init.t), 1, function(data) sample.onezi.t(data[c(12, 4:10)], data[11], mle[,1], data[13])))
+nu <- 8
+
+
+result2 <- vector("list", length = length(beta.init.list))
 
 t3 <- Sys.time()
-result2 <- gibbs(NN=5000, zi.init.t, mle[,1], lambda.init.t, 8, pi.nu=1, nu_known=T)
-beta_sample2 <- result2[,1:8]
+
+for (i in 1:length(beta.init.list)) {
+  beta.init.t <- beta.init.list[[i]]
+  lambda.init.t <- rgamma(dim(combats_diff_train)[1], shape=nu/2, scale=2/nu)
+  zi.init.t <- as.matrix(apply(cbind(combats_diff_train,lambda.init.t), 1, function(data) sample.onezi.t(data[c(13, 4:11)], data[12], beta.init.t, data[14])))
+  result2[[i]] <- gibbs(NN=5000, zi.init.t, beta.init.t, lambda.init.t, nu, pi.nu=1, nu_known=T)
+}
+
 t4 <- Sys.time()
 t4 - t3
 
